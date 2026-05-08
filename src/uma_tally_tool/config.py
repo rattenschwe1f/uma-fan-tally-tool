@@ -8,6 +8,7 @@ from pathlib import Path
 JOINER_QUOTA_MODES = ("strict", "prorated")
 TALLY_MODES = ("live", "complete")
 EXPECTED_FANS_STYLES = ("numbers", "bar")
+Color = tuple[int, int, int]
 
 
 def _as_bool(value: object, default: bool = True) -> bool:
@@ -30,6 +31,33 @@ def _optional_str(value: object) -> str | None:
     return text or None
 
 
+def _as_color(value: object, default: Color) -> Color:
+    if value is None:
+        return default
+    if isinstance(value, tuple) and len(value) == 3:
+        return tuple(int(part) for part in value)  # type: ignore[return-value]
+
+    text = str(value).strip()
+    if not text:
+        return default
+    if text.startswith("#"):
+        text = text[1:]
+    if len(text) == 6:
+        try:
+            return tuple(int(text[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+        except ValueError:
+            pass
+    parts = [part.strip() for part in text.split(",")]
+    if len(parts) == 3:
+        try:
+            color = tuple(int(part) for part in parts)
+        except ValueError:
+            color = ()
+        if len(color) == 3 and all(0 <= part <= 255 for part in color):
+            return color  # type: ignore[return-value]
+    raise ValueError(f"Expected a color like #5BBEFF or 91,190,255, got {value!r}")
+
+
 @dataclass
 class Config:
     circle_id: int
@@ -47,6 +75,9 @@ class Config:
     show_latest_day: bool = True
     pin_leader: bool = False
     highlight_leader: bool = False
+    on_pace_color: Color = (91, 190, 255)
+    finished_color: Color = (119, 221, 139)
+    off_pace_color: Color = (235, 82, 82)
     save_output: bool = False
     club_logo: Path | None = None
     discord_webhook: str | None = None
@@ -88,6 +119,9 @@ class Config:
             show_latest_day=_as_bool(data.get("show_latest_day"), True),
             pin_leader=_as_bool(data.get("pin_leader"), False),
             highlight_leader=_as_bool(data.get("highlight_leader"), False),
+            on_pace_color=_as_color(data.get("on_pace_color"), (91, 190, 255)),
+            finished_color=_as_color(data.get("finished_color"), (119, 221, 139)),
+            off_pace_color=_as_color(data.get("off_pace_color"), (235, 82, 82)),
             save_output=_as_bool(data.get("save_output"), False),
             club_logo=Path(logo) if (logo := _optional_str(data.get("club_logo"))) else None,
             discord_webhook=_optional_str(data.get("discord_webhook")),
@@ -118,6 +152,9 @@ _ENV_KEYS = {
     "SHOW_DAY_X": "show_latest_day",
     "PIN_LEADER": "pin_leader",
     "HIGHLIGHT_LEADER": "highlight_leader",
+    "ON_PACE_COLOR": "on_pace_color",
+    "FINISHED_COLOR": "finished_color",
+    "OFF_PACE_COLOR": "off_pace_color",
     "SAVE_OUTPUT": "save_output",
     "CLUB_LOGO": "club_logo",
     "DISCORD_WEBHOOK": "discord_webhook",
@@ -142,7 +179,7 @@ def _strip_env_comment(raw: str) -> str:
         if ch in {"'", '"'}:
             quote = ch
             continue
-        if ch == "#":
+        if ch == "#" and i > 0 and raw[i - 1].isspace():
             return raw[:i]
     return raw
 

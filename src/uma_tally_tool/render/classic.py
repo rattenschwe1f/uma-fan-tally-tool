@@ -93,7 +93,8 @@ def _columns(
     columns = [Column("rank", "#", 92, "left"), Column("trainer", "Trainer", 200, "left")]
     if config.expected_fans_style == "bar":
         hidden_width = sum(width for _, _, width, _, shown in optional if not shown)
-        columns.append(Column("progress", "Monthly Progress", 430 + hidden_width, "left"))
+        columns.append(Column("progress", "Monthly Progress", 330 + hidden_width, "left"))
+        columns.append(Column("quota", "Quota", 100, "right"))
     else:
         columns.extend(
             [
@@ -155,38 +156,28 @@ def _draw_header_banner(img, xy, theme):
     img.paste(layer, (x0, y0), mask)
 
 
-def _pill(draw, img, xy, w, h, text, font, bg, fg):
-    """Draw a 3-stop pill (outer dark border, inner light highlight, body
-    gradient). Composited at 4× then downsampled with LANCZOS for smooth
-    rounded edges."""
+def _pill(draw, img, xy, w, h, text, font, fill, fg):
+    """Draw a smooth rounded status pill using the same status color as bars."""
     x, y = xy
-    outer, inner = bg["outer"], bg["inner"]
-    body_top, body_bottom = bg["body"]
     ss = 4
     W, H = w * ss, h * ss
-    ring = max(1, H // 26)
-    body_inset = ring * 2
+    ring = max(1, H // 22)
+    outer = _lerp(fill, (0, 0, 0), 0.35)
+    inner = _lerp(fill, (255, 255, 255), 0.25)
 
-    layer = Image.new("RGBA", (W, H), outer + (255,))
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ld = ImageDraw.Draw(layer)
+    ld.rounded_rectangle((0, 0, W - 1, H - 1), radius=H // 2, fill=outer + (255,))
     ld.rounded_rectangle(
         (ring, ring, W - ring - 1, H - ring - 1),
-        radius=(H - ring * 2) // 2, fill=inner + (255,),
+        radius=(H - ring * 2) // 2,
+        fill=inner + (255,),
     )
-    bw, bh = W - body_inset * 2, H - body_inset * 2
-    body = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
-    bd = ImageDraw.Draw(body)
-    for i in range(bh):
-        t = i / max(1, bh - 1)
-        color = tuple(int(round(body_top[c] + (body_bottom[c] - body_top[c]) * t)) for c in range(3))
-        bd.line([(0, i), (bw, i)], fill=color + (255,))
-    body_mask = Image.new("L", (bw, bh), 0)
-    ImageDraw.Draw(body_mask).rounded_rectangle((0, 0, bw - 1, bh - 1), radius=bh // 2, fill=255)
-    layer.paste(body, (body_inset, body_inset), body_mask)
-
-    outer_mask = Image.new("L", (W, H), 0)
-    ImageDraw.Draw(outer_mask).rounded_rectangle((0, 0, W - 1, H - 1), radius=H // 2, fill=255)
-    layer.putalpha(outer_mask)
+    ld.rounded_rectangle(
+        (ring * 2, ring * 2, W - ring * 2 - 1, H - ring * 2 - 1),
+        radius=(H - ring * 4) // 2,
+        fill=fill + (255,),
+    )
     layer = layer.resize((w, h), Image.LANCZOS)
     img.paste(layer, (x, y), layer)
 
@@ -198,15 +189,25 @@ def _pill(draw, img, xy, w, h, text, font, bg, fg):
 
 
 def _progress_label(total: int, quota: int) -> str:
+    pct = 0 if quota <= 0 else round((total / quota) * 100)
+    return f"{pct}%"
+
+
+def _quota_label(total: int, quota: int) -> str:
     def millions(n: int) -> str:
         v = n / 1_000_000
         return f"{v:.0f}" if v == int(v) else f"{v:.1f}"
 
-    pct = 0 if quota <= 0 else round((total / quota) * 100)
-    return f"{pct}%  {millions(total)}/{millions(quota)}M"
+    return f"{millions(total)}/{millions(quota)}M"
 
 
-def _draw_progress(draw, cell_xywh, total: int, quota: int, on_target: bool, font, theme):
+def _status_color(total: int, quota: int, on_target: bool, config: Config) -> tuple[int, int, int]:
+    if quota > 0 and total >= quota:
+        return config.finished_color
+    return config.on_pace_color if on_target else config.off_pace_color
+
+
+def _draw_progress(draw, cell_xywh, total: int, quota: int, on_target: bool, font, theme, config: Config):
     x, y, w, h = cell_xywh
     pad = 14 * SCALE
     gap = 12 * SCALE
@@ -229,7 +230,7 @@ def _draw_progress(draw, cell_xywh, total: int, quota: int, on_target: bool, fon
     outline = _lerp(theme["subtle"], theme["text"], 0.35)
     draw.rounded_rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=radius, fill=track, outline=outline)
     if fill_w > 0:
-        fill = theme["progress_on"] if on_target else theme["progress_off"]
+        fill = _status_color(total, quota, on_target, config)
         draw.rounded_rectangle((bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=radius, fill=fill)
 
     label_y = y + h / 2 + label_h / 2
@@ -426,6 +427,7 @@ def render(
                     _low_days_color(r.low_days, r.days_elapsed, theme),
                 ),
                 "latest_day": (fmt_int(r.latest_day_delta), "right", theme["text"]),
+                "quota": (_quota_label(r.total, monthly_quota), "right", theme["text"]),
             }
 
         for column in columns:
@@ -457,14 +459,15 @@ def render(
                     r.on_target,
                     cell_font,
                     theme,
+                    config,
                 )
             elif column.key == "on_pace":
                 pill_w, pill_h = 80 * SCALE, 26 * SCALE
                 px = x + (wpx - pill_w) // 2
                 py = y + (row_h - pill_h) // 2
-                tier_bg = theme["pill_tiers"][r.pill_tier]
                 tier_label = theme["pill_label"][r.pill_tier]
-                _pill(draw, img, (px, py), pill_w, pill_h, tier_label, pill_font, tier_bg, theme["pill_fg"])
+                tier_color = _status_color(r.total, monthly_quota, r.on_target, config)
+                _pill(draw, img, (px, py), pill_w, pill_h, tier_label, pill_font, tier_color, theme["pill_fg"])
             else:
                 text, cell_align, color = cells[column.key]
                 _draw_text_aligned(

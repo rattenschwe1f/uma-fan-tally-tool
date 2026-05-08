@@ -43,6 +43,9 @@ def test_environment_for_club_merges_defaults_and_overrides():
         "discord_webhook": "https://discord.example/club",
         "pin leader": "true",
         "highlight_leader": "true",
+        "on pace color": "#010203",
+        "finished_color": "#040506",
+        "off_pace_color": "7,8,9",
     }
 
     env = batch.environment_for_club(club, base)
@@ -53,6 +56,9 @@ def test_environment_for_club_merges_defaults_and_overrides():
     assert env["MONTHLY_QUOTA"] == "60000000"
     assert env["PIN_LEADER"] == "true"
     assert env["HIGHLIGHT_LEADER"] == "true"
+    assert env["ON_PACE_COLOR"] == "#010203"
+    assert env["FINISHED_COLOR"] == "#040506"
+    assert env["OFF_PACE_COLOR"] == "7,8,9"
 
 
 def test_environment_for_club_requires_api_key_circle_and_webhook():

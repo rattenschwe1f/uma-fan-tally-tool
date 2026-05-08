@@ -17,7 +17,7 @@ def test_bar_layout_replaces_expected_columns_with_progress():
 
     columns = _columns(12, 500_000, cfg)
 
-    assert [c.key for c in columns[:3]] == ["rank", "trainer", "progress"]
+    assert [c.key for c in columns[:4]] == ["rank", "trainer", "progress", "quota"]
     assert "expected" not in [c.key for c in columns]
     assert "total" not in [c.key for c in columns]
     assert "behind" not in [c.key for c in columns]
@@ -34,7 +34,7 @@ def test_bar_layout_reallocates_hidden_metric_width_to_progress():
 
     progress = next(c for c in _columns(12, 500_000, cfg) if c.key == "progress")
 
-    assert progress.width == 430 + 150 + 150 + 140
+    assert progress.width == 330 + 150 + 150 + 140
 
 
 def _report(name: str, total: int, staff_role: str | None = None) -> MemberReport:

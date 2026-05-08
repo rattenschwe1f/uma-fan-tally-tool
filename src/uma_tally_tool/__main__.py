@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .app import run_once
 from .bootstrap import binary_dir, open_in_editor, pause_before_exit, write_starter_config
-from .config import Config
+from .config import Config, _as_color
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -43,6 +43,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     highlight = p.add_mutually_exclusive_group()
     highlight.add_argument("--highlight-leader", dest="highlight_leader", action="store_true", default=None)
     highlight.add_argument("--no-highlight-leader", dest="highlight_leader", action="store_false", default=None)
+    p.add_argument("--on-pace-color", dest="on_pace_color", type=lambda v: _as_color(v, (0, 0, 0)), help="Override on-pace bar and pill color")
+    p.add_argument("--finished-color", dest="finished_color", type=lambda v: _as_color(v, (0, 0, 0)), help="Override finished bar and pill color")
+    p.add_argument("--off-pace-color", dest="off_pace_color", type=lambda v: _as_color(v, (0, 0, 0)), help="Override off-pace bar and pill color")
     p.add_argument("--out", type=Path, dest="output_dir", help="Override output directory")
     output = p.add_mutually_exclusive_group()
     output.add_argument("--save-output", dest="save_output", action="store_true", default=None)
@@ -77,7 +80,8 @@ def _load_config(args: argparse.Namespace) -> Config:
         "circle_id", "monthly_quota", "low_day_threshold", "font", "joiner_quota", "tally",
         "expected_fans_style", "show_daily_avg", "show_on_pace", "show_needed_per_day",
         "show_days_below_threshold", "show_latest_day", "pin_leader", "highlight_leader", "save_output",
-        "output_dir", "club_logo", "discord_webhook", "uma_moe_api_key",
+        "on_pace_color", "finished_color", "off_pace_color", "output_dir", "club_logo",
+        "discord_webhook", "uma_moe_api_key",
     ):
         val = getattr(args, field_name)
         if val is not None:

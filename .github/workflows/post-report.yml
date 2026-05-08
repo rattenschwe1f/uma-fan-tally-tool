@@ -26,6 +26,9 @@ jobs:
       SHOW_LATEST_DAY: ${{ vars.SHOW_LATEST_DAY || vars.SHOW_DAY_X || 'true' }}
       PIN_LEADER: ${{ vars.PIN_LEADER || 'false' }}
       HIGHLIGHT_LEADER: ${{ vars.HIGHLIGHT_LEADER || 'false' }}
+      ON_PACE_COLOR: ${{ vars.ON_PACE_COLOR || '#5BBEFF' }}
+      FINISHED_COLOR: ${{ vars.FINISHED_COLOR || '#77DD8B' }}
+      OFF_PACE_COLOR: ${{ vars.OFF_PACE_COLOR || '#EB5252' }}
       SAVE_OUTPUT: ${{ vars.SAVE_OUTPUT || 'false' }}
       OUTPUT_DIR: ${{ vars.OUTPUT_DIR || 'out' }}
       CLUB_LOGO: ${{ vars.CLUB_LOGO }}

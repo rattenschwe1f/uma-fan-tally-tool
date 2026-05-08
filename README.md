@@ -59,6 +59,9 @@ Variables here become defaults that every club can share.
 | `JOINER_QUOTA` | no | `strict` | `strict` or `prorated` for mid-month joiners. |
 | `TALLY` | no | `complete` | `complete` ignores the in-progress game day; `live` includes it. |
 | `EXPECTED_FANS_STYLE` | no | `bar` | `numbers` or `bar`. |
+| `ON_PACE_COLOR` | no | `#5BBEFF` | Color for on-pace bars and `Yes` badges. |
+| `FINISHED_COLOR` | no | `#77DD8B` | Color for complete bars and `Done` badges. |
+| `OFF_PACE_COLOR` | no | `#EB5252` | Color for off-pace bars and `No` badges. |
 | `SHOW_DAILY_AVG` | no | `true` | Show/hide `Daily Avg`. |
 | `SHOW_ON_PACE` | no | `true` | Show/hide the `Done`/`Yes`/`No` pace badge. |
 | `SHOW_NEEDED_PER_DAY` | no | `true` | Show/hide `Needed/Day`. |
@@ -72,6 +75,7 @@ Variables here become defaults that every club can share.
 | `LOGO_URL` | no | `https://chronogenesis.net/images/chara_icon/...png` | Optional logo URL downloaded during the run. |
 
 Boolean settings accept `true/false`, `yes/no`, `on/off`, or `show/hide`.
+Color settings accept `#RRGGBB`, `RRGGBB`, or comma-separated RGB.
 
 Copy variable names:
 
@@ -83,6 +87,9 @@ LOW_DAY_THRESHOLD
 JOINER_QUOTA
 TALLY
 EXPECTED_FANS_STYLE
+ON_PACE_COLOR
+FINISHED_COLOR
+OFF_PACE_COLOR
 SHOW_DAILY_AVG
 SHOW_ON_PACE
 SHOW_NEEDED_PER_DAY
@@ -133,6 +140,9 @@ Example:
     "discord_webhook": "https://discord.com/api/webhooks/...",
     "monthly_quota": "45000000",
     "expected_fans_style": "bar",
+    "on_pace_color": "#5BBEFF",
+    "finished_color": "#77DD8B",
+    "off_pace_color": "#EB5252",
     "logo_url": "https://chronogenesis.net/images/chara_icon/...png"
   },
   {
@@ -161,6 +171,12 @@ font
 joiner_quota
 tally
 expected_fans_style
+on_pace_color
+on pace color
+finished_color
+finished color
+off_pace_color
+off pace color
 show_daily_avg
 show_on_pace
 show_needed_per_day
@@ -222,6 +238,9 @@ Every setting can be overridden from the command line:
 | `--joiner-quota {strict,prorated}` | `JOINER_QUOTA` |
 | `--tally {live,complete}` | `TALLY` |
 | `--expected-fans-style {numbers,bar}` | `EXPECTED_FANS_STYLE` |
+| `--on-pace-color COLOR` | `ON_PACE_COLOR` |
+| `--finished-color COLOR` | `FINISHED_COLOR` |
+| `--off-pace-color COLOR` | `OFF_PACE_COLOR` |
 | `--show-daily-avg` / `--hide-daily-avg` | `SHOW_DAILY_AVG` |
 | `--show-on-pace` / `--hide-on-pace` | `SHOW_ON_PACE` |
 | `--show-needed-per-day` / `--hide-needed-per-day` | `SHOW_NEEDED_PER_DAY` |
@@ -241,7 +260,8 @@ Every setting can be overridden from the command line:
 - `Trainer`: member name from uma.moe.
 - `Expected`: expected progress by the cutoff day in `numbers` mode.
 - `Total Fans`: monthly fans gained so far in `numbers` mode.
-- `Monthly Progress`: progress bar in `bar` mode, filled blue when on pace and red when behind.
+- `Monthly Progress`: progress bar in `bar` mode, using the configured on-pace, finished, or off-pace color.
+- `Quota`: current monthly gain versus quota in `bar` mode.
 - `Daily Avg`: average fans per day.
 - `On Pace?`: `Done`, `Yes`, or `No`.
 - `Behind By`: how far behind expected pace the member is.

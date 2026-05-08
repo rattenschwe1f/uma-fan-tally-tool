@@ -35,6 +35,9 @@ def env_config(tmp_path: Path) -> Path:
         "SHOW_DAY_X=0\n"
         "PIN_LEADER=true\n"
         "HIGHLIGHT_LEADER=true\n"
+        "ON_PACE_COLOR=#112233\n"
+        "FINISHED_COLOR=68,85,102\n"
+        "OFF_PACE_COLOR=778899\n"
         "OUTPUT_DIR=from_env\n"
         "SAVE_OUTPUT=true\n"
         "CLUB_LOGO=logo-env.png\n"
@@ -60,6 +63,9 @@ def test_loads_defaults_from_env(env_config: Path):
     assert cfg.show_latest_day is False
     assert cfg.pin_leader is True
     assert cfg.highlight_leader is True
+    assert cfg.on_pace_color == (17, 34, 51)
+    assert cfg.finished_color == (68, 85, 102)
+    assert cfg.off_pace_color == (119, 136, 153)
     assert cfg.output_dir == Path("from_env")
     assert cfg.save_output is True
     assert cfg.club_logo == Path("logo-env.png")
@@ -164,6 +170,18 @@ def test_cli_overrides_uma_api_key(env_config: Path):
         ["--env", str(env_config), "--uma-api-key", "key-from-cli"]
     ))
     assert cfg.uma_moe_api_key == "key-from-cli"
+
+
+def test_cli_overrides_status_colors(env_config: Path):
+    cfg = _load_config(_parse_args([
+        "--env", str(env_config),
+        "--on-pace-color", "#010203",
+        "--finished-color", "4,5,6",
+        "--off-pace-color", "070809",
+    ]))
+    assert cfg.on_pace_color == (1, 2, 3)
+    assert cfg.finished_color == (4, 5, 6)
+    assert cfg.off_pace_color == (7, 8, 9)
 
 
 def test_cli_monthly_quota_override(env_config: Path):
