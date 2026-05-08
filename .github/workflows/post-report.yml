@@ -1,0 +1,47 @@
+name: Post daily club report
+
+on:
+  schedule:
+    # Normal daily run after the Uma Musume game-day reset at 15:00 UTC.
+    - cron: "10 15 2-31 * *"
+    # First-of-month run after uma.moe has had time to publish the new period.
+    - cron: "10 9 1 * *"
+  workflow_dispatch:
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    env:
+      CIRCLE_ID: ${{ vars.CIRCLE_ID || secrets.CIRCLE_ID }}
+      FONT: ${{ vars.FONT || 'uma' }}
+      MONTHLY_QUOTA: ${{ vars.MONTHLY_QUOTA || '60000000' }}
+      LOW_DAY_THRESHOLD: ${{ vars.LOW_DAY_THRESHOLD || '500000' }}
+      JOINER_QUOTA: ${{ vars.JOINER_QUOTA || 'strict' }}
+      TALLY: ${{ vars.TALLY || 'complete' }}
+      EXPECTED_FANS_STYLE: ${{ vars.EXPECTED_FANS_STYLE || vars.EXPACTED_FANS_STYLE || 'numbers' }}
+      SHOW_DAILY_AVG: ${{ vars.SHOW_DAILY_AVG || 'true' }}
+      SHOW_ON_PACE: ${{ vars.SHOW_ON_PACE || 'true' }}
+      SHOW_NEEDED_PER_DAY: ${{ vars.SHOW_NEEDED_PER_DAY || 'true' }}
+      SHOW_DAYS_BELOW_THRESHOLD: ${{ vars.SHOW_DAYS_BELOW_THRESHOLD || vars.SHOW_DAYS_BELOW_500K || 'true' }}
+      SHOW_LATEST_DAY: ${{ vars.SHOW_LATEST_DAY || vars.SHOW_DAY_X || 'true' }}
+      PIN_LEADER: ${{ vars.PIN_LEADER || 'false' }}
+      HIGHLIGHT_LEADER: ${{ vars.HIGHLIGHT_LEADER || 'false' }}
+      SAVE_OUTPUT: ${{ vars.SAVE_OUTPUT || 'false' }}
+      OUTPUT_DIR: ${{ vars.OUTPUT_DIR || 'out' }}
+      CLUB_LOGO: ${{ vars.CLUB_LOGO }}
+      LOGO_URL: ${{ vars.LOGO_URL }}
+      UMA_API_KEY: ${{ secrets.UMA_API_KEY }}
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      CLUBS_JSON: ${{ secrets.CLUBS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Render and post report
+        run: python -m uma_tally_tool.batch

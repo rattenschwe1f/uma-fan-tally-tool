@@ -1,0 +1,481 @@
+"""Classic spreadsheet-style report. Renders at 2× and saves at 2× for retina output."""
+
+from calendar import monthrange
+from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
+
+from PIL import Image, ImageDraw
+
+from ..compute import MemberReport
+from ..config import Config
+from ..model import Circle
+from .base import fmt_blank_if_zero, fmt_int, load_font
+from .themes import THEME
+
+DISPLAY_ROWS = 30
+
+
+def _lerp(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
+    t = max(0.0, min(1.0, t))
+    return tuple(int(round(a[i] + (b[i] - a[i]) * t)) for i in range(3))  # type: ignore[return-value]
+
+
+def _severity_color(stops: list[tuple[int, int, int]], severity: float) -> tuple[int, int, int]:
+    """Hard-cut band lookup: snaps to one stop per band, no interpolation."""
+    severity = max(0.0, min(1.0, severity))
+    n = len(stops) - 1
+    idx = min(int(severity * n + 1e-9), n)
+    return stops[idx]
+
+
+def _row_color(off_by: int, quota_per_day: int, theme: dict) -> tuple[int, int, int]:
+    """Behind By / Needed/Day cell colour. Uneven bands: grey <1 day,
+    brown 1-3 days, purple 3+ days."""
+    stops = theme["severity_steps"]
+    if off_by <= 0 or quota_per_day <= 0:
+        return stops[0]
+    days_behind = off_by / quota_per_day
+    if days_behind < 1:
+        return stops[0]
+    if days_behind < 3:
+        return stops[1]
+    return stops[2]
+
+
+def _low_days_color(low_days: int, days_elapsed: int, theme: dict) -> tuple[int, int, int]:
+    """Days < N severity: walks the theme's 3-stop ramp, capped at 30% of days low."""
+    if low_days <= 0 or days_elapsed <= 0:
+        return theme["subtle"]
+    severity = min(1.0, (low_days / days_elapsed) / 0.3)
+    return _severity_color(theme["severity_steps"], severity)
+
+
+@dataclass(frozen=True)
+class Column:
+    key: str
+    label: str
+    width: int
+    align: str
+
+
+def _short_amount(n: int, *, trim_zero: bool = True) -> str:
+    if n >= 1_000_000:
+        v = n / 1_000_000
+        if trim_zero and v == int(v):
+            return f"{v:.0f}M"
+        return f"{v:.1f}M"
+    if n >= 1000:
+        v = n / 1000
+        if trim_zero and v == int(v):
+            return f"{v:.0f}K"
+        return f"{v:.1f}K"
+    return str(n)
+
+
+def _columns(
+    latest_day: int,
+    low_day_threshold: int,
+    config: Config,
+) -> list[Column]:
+    """Column layout. Day-N follows the latest snapshot; low-day label echoes
+    the threshold."""
+    day_label = f"Day {latest_day}" if latest_day else "Day 1"
+    low_label = f"Days < {_short_amount(low_day_threshold)}"
+    optional = [
+        ("daily_avg", "Daily Avg", 150, "right", config.show_daily_avg),
+        ("on_pace", "On Pace?", 120, "center", config.show_on_pace),
+        ("needed_per_day", "Needed/Day", 150, "right", config.show_needed_per_day),
+        ("low_days", low_label, 130, "right", config.show_days_below_threshold),
+        ("latest_day", day_label, 140, "right", config.show_latest_day),
+    ]
+
+    columns = [Column("rank", "#", 92, "left"), Column("trainer", "Trainer", 200, "left")]
+    if config.expected_fans_style == "bar":
+        hidden_width = sum(width for _, _, width, _, shown in optional if not shown)
+        columns.append(Column("progress", "Monthly Progress", 430 + hidden_width, "left"))
+    else:
+        columns.extend(
+            [
+                Column("expected", "Expected", 150, "right"),
+                Column("total", "Total Fans", 150, "right"),
+                Column("behind", "Behind By", 130, "right"),
+            ]
+        )
+    columns.extend(Column(key, label, width, align) for key, label, width, align, shown in optional if shown)
+    return columns
+
+PAD_X = 32
+PAD_Y = 24
+ROW_H = 44
+HEADER_H = 52
+TITLE_H = 96
+
+SCALE = 2  # 2× supersampling for retina-quality output
+
+
+def _draw_text_aligned(draw, cell_xywh, text, font, fill, align):
+    """Anchor-aligned text inside an (x, y, w, h) cell."""
+    x, y, w, h = cell_xywh
+    pad = 14 * SCALE
+    descent = font.getmetrics()[1]
+    cy = y + h / 2 - descent / 2
+    if align == "left":
+        draw.text((x + pad, cy), text, font=font, fill=fill, anchor="lm")
+    elif align == "right":
+        draw.text((x + w - pad, cy), text, font=font, fill=fill, anchor="rm")
+    else:  # center
+        draw.text((x + w / 2, cy), text, font=font, fill=fill, anchor="mm")
+
+
+def _draw_header_banner(img, xy, theme):
+    """Rounded green banner with a brighter top stripe and darker bottom shadow.
+    Composes on a separate layer + rounded alpha mask so the stripes get clipped
+    to the rounded shape cleanly (drawing rectangles directly leaves curve
+    artifacts where the stripe's rounded edge bleeds past a square cover)."""
+    x0, y0, x1, y1 = xy
+    w = x1 - x0
+    h = y1 - y0
+    radius = 14 * SCALE
+    stripe = 4 * SCALE
+
+    layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+    ld.rectangle((0, 0, w, h), fill=theme["header_bg"])
+    ld.rectangle((0, 0, w, stripe), fill=theme["header_top"])
+    ld.rectangle((0, h - stripe, w, h), fill=theme["header_bottom"])
+
+    mask = Image.new("L", (w, h), 0)
+    md = ImageDraw.Draw(mask)
+    md.rounded_rectangle((0, 0, w, h), radius=radius, fill=255)
+    # Square off the bottom corners — the table starts immediately below, so a
+    # rounded bottom edge would look detached.
+    md.rectangle((0, h - radius, w, h), fill=255)
+
+    img.paste(layer, (x0, y0), mask)
+
+
+def _pill(draw, img, xy, w, h, text, font, bg, fg):
+    """Draw a 3-stop pill (outer dark border, inner light highlight, body
+    gradient). Composited at 4× then downsampled with LANCZOS for smooth
+    rounded edges."""
+    x, y = xy
+    outer, inner = bg["outer"], bg["inner"]
+    body_top, body_bottom = bg["body"]
+    ss = 4
+    W, H = w * ss, h * ss
+    ring = max(1, H // 26)
+    body_inset = ring * 2
+
+    layer = Image.new("RGBA", (W, H), outer + (255,))
+    ld = ImageDraw.Draw(layer)
+    ld.rounded_rectangle(
+        (ring, ring, W - ring - 1, H - ring - 1),
+        radius=(H - ring * 2) // 2, fill=inner + (255,),
+    )
+    bw, bh = W - body_inset * 2, H - body_inset * 2
+    body = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
+    bd = ImageDraw.Draw(body)
+    for i in range(bh):
+        t = i / max(1, bh - 1)
+        color = tuple(int(round(body_top[c] + (body_bottom[c] - body_top[c]) * t)) for c in range(3))
+        bd.line([(0, i), (bw, i)], fill=color + (255,))
+    body_mask = Image.new("L", (bw, bh), 0)
+    ImageDraw.Draw(body_mask).rounded_rectangle((0, 0, bw - 1, bh - 1), radius=bh // 2, fill=255)
+    layer.paste(body, (body_inset, body_inset), body_mask)
+
+    outer_mask = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(outer_mask).rounded_rectangle((0, 0, W - 1, H - 1), radius=H // 2, fill=255)
+    layer.putalpha(outer_mask)
+    layer = layer.resize((w, h), Image.LANCZOS)
+    img.paste(layer, (x, y), layer)
+
+    # Center the inked bbox (not ascent+descent) so caps labels sit visually centred.
+    bx0, by0, bx1, by1 = font.getbbox(text)
+    px = x + (w - (bx1 - bx0)) / 2 - bx0
+    py = y + (h - (by1 - by0)) / 2 - by0
+    draw.text((px, py), text, font=font, fill=fg)
+
+
+def _progress_label(total: int, quota: int) -> str:
+    def millions(n: int) -> str:
+        v = n / 1_000_000
+        return f"{v:.0f}" if v == int(v) else f"{v:.1f}"
+
+    pct = 0 if quota <= 0 else round((total / quota) * 100)
+    return f"{pct}%  {millions(total)}/{millions(quota)}M"
+
+
+def _draw_progress(draw, cell_xywh, total: int, quota: int, on_target: bool, font, theme):
+    x, y, w, h = cell_xywh
+    pad = 14 * SCALE
+    gap = 12 * SCALE
+    bar_h = 18 * SCALE
+    label = _progress_label(total, quota)
+    label_bbox = draw.textbbox((0, 0), label, font=font)
+    label_w = label_bbox[2] - label_bbox[0]
+    label_h = label_bbox[3] - label_bbox[1]
+
+    bar_x = x + pad
+    bar_y = y + (h - bar_h) // 2
+    label_x = x + w - pad
+    bar_w = max(80 * SCALE, w - pad * 2 - gap - label_w)
+    bar_w = min(bar_w, max(0, label_x - gap - bar_x))
+    radius = bar_h // 2
+    pct = 0.0 if quota <= 0 else max(0.0, min(1.0, total / quota))
+    fill_w = int(round(bar_w * pct))
+
+    track = _lerp(theme["panel"], theme["subtle"], 0.25)
+    outline = _lerp(theme["subtle"], theme["text"], 0.35)
+    draw.rounded_rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=radius, fill=track, outline=outline)
+    if fill_w > 0:
+        fill = theme["progress_on"] if on_target else theme["progress_off"]
+        draw.rounded_rectangle((bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=radius, fill=fill)
+
+    label_y = y + h / 2 + label_h / 2
+    draw.text((label_x, label_y), label, font=font, fill=theme["text"], anchor="rs")
+
+
+def _previous_ranks(rows: list[MemberReport]) -> dict[int, int]:
+    ranked = sorted(rows, key=lambda r: (-r.previous_total, r.trainer_name.lower(), r.viewer_id))
+    return {r.viewer_id: i + 1 for i, r in enumerate(ranked)}
+
+
+def _leader_sort_group(row: MemberReport, pin_leader: bool) -> int:
+    if not pin_leader:
+        return 2
+    if row.staff_role == "leader":
+        return 0
+    return 1
+
+
+def _sort_rows(rows: list[MemberReport], config: Config) -> list[MemberReport]:
+    return sorted(
+        rows,
+        key=lambda r: (_leader_sort_group(r, config.pin_leader), -r.total, r.trainer_name.lower(), r.viewer_id),
+    )
+
+
+def _draw_rank(draw, cell_xywh, rank: int, movement: int | None, font, theme):
+    x, y, w, h = cell_xywh
+    pad = 14 * SCALE
+    descent = font.getmetrics()[1]
+    cy = y + h / 2 - descent / 2
+    if movement is None:
+        text = str(rank)
+        fill = theme["subtle"]
+    elif movement > 0:
+        text = f"{rank} ↑{movement}"
+        fill = theme["rank_up"]
+    elif movement < 0:
+        text = f"{rank} ↓{abs(movement)}"
+        fill = theme["rank_down"]
+    else:
+        text = f"{rank} -"
+        fill = theme["rank_flat"]
+    draw.text((x + pad, cy), text, font=font, fill=fill, anchor="lm")
+
+
+def _draw_trainer(draw, cell_xywh, name: str, leader: bool, font, tag_font, theme):
+    x, y, w, h = cell_xywh
+    pad = 14 * SCALE
+    descent = font.getmetrics()[1]
+    cy = y + h / 2 - descent / 2
+    name_x = x + pad
+    draw.text((name_x, cy), name, font=font, fill=theme["text"], anchor="lm")
+    if not leader:
+        return
+    bbox = draw.textbbox((name_x, cy), name, font=font, anchor="lm")
+    draw.text((bbox[2] + 8 * SCALE, cy), "leader", font=tag_font, fill=theme["rank_flat"], anchor="lm")
+
+
+def render(
+    circle: Circle,
+    reports: list[MemberReport],
+    today: date,
+    config: Config,
+    out_path: Path,
+    *,
+    rank_icon: Path | None = None,
+) -> None:
+    theme = THEME
+    use_game_font = theme["use_game_font"]
+
+    title_font = load_font(40 * SCALE, bold=True, game=use_game_font)
+    sub_font = load_font(15 * SCALE, game=use_game_font)
+    header_font = load_font(14 * SCALE, bold=True, game=use_game_font)
+    cell_font = load_font(15 * SCALE, game=use_game_font)
+    rank_font = load_font(14 * SCALE, bold=True)
+    leader_tag_font = load_font(10 * SCALE, bold=True)
+    pill_font = load_font(13 * SCALE, bold=True, game=use_game_font)
+
+    rows = _sort_rows(reports, config)
+    shown_rows = rows[:DISPLAY_ROWS]
+    previous_ranks = _previous_ranks(rows)
+    latest_day = max((r.days_elapsed for r in rows), default=0)
+    columns = _columns(latest_day, config.low_day_threshold, config)
+    width_1x = sum(c.width for c in columns) + PAD_X * 2
+    height_1x = TITLE_H + HEADER_H + ROW_H * DISPLAY_ROWS + PAD_Y * 2
+
+    width = width_1x * SCALE
+    height = height_1x * SCALE
+    pad_x = PAD_X * SCALE
+    pad_y = PAD_Y * SCALE
+    row_h = ROW_H * SCALE
+    header_h = HEADER_H * SCALE
+    title_h = TITLE_H * SCALE
+
+    img = Image.new("RGB", (width, height), theme["bg"])
+    draw = ImageDraw.Draw(img)
+
+    # Chronogenesis source PNGs have a slight horizontal stretch baked in;
+    # squeeze 7% horizontally to land at in-game proportions before resize.
+    name_x = pad_x
+    name_y = pad_y
+    block_h = (40 + 22) * SCALE
+    logo_bottom = pad_y  # tracked so the subtitle can bottom-align to the logo
+
+    if config.club_logo and config.club_logo.exists():
+        with Image.open(config.club_logo) as raw_logo:
+            logo = raw_logo.convert("RGBA")
+        logo_size = 96 * SCALE
+        squeezed_w = int(logo.size[0] * 0.93)
+        logo = logo.resize((squeezed_w, logo.size[1]), Image.LANCZOS)
+        scale = logo_size / logo.size[1]
+        final_w = int(logo.size[0] * scale)
+        logo = logo.resize((final_w, logo_size), Image.LANCZOS)
+        canvas = Image.new("RGBA", (logo_size, logo_size), (0, 0, 0, 0))
+        canvas.paste(logo, ((logo_size - final_w) // 2, 0), logo)
+        logo = canvas
+        logo_y = pad_y + (block_h - logo_size) // 2
+        img.paste(logo, (pad_x, logo_y), logo)
+        name_x = pad_x + logo_size + 18 * SCALE
+        name_y = pad_y + 6 * SCALE
+        logo_bottom = logo_y + logo_size
+    sub_x = name_x
+
+    if rank_icon and rank_icon.exists():
+        with Image.open(rank_icon) as raw_rank:
+            rank_img = raw_rank.convert("RGBA")
+        rank_size = 56 * SCALE
+        rw, rh = rank_img.size
+        scale = rank_size / max(rw, rh)
+        rank_img = rank_img.resize((int(rw * scale), int(rh * scale)), Image.LANCZOS)
+        # Cap-line reference keeps icon position independent of name glyphs.
+        cap_bbox = title_font.getbbox("X")
+        cap_center = name_y + (cap_bbox[1] + cap_bbox[3]) / 2
+        rank_y = int(cap_center - rank_img.size[1] / 2)
+        img.paste(rank_img, (name_x, rank_y), rank_img)
+        name_x += rank_img.size[0] + 12 * SCALE
+
+    draw.text((name_x, name_y), circle.name, font=title_font, fill=theme["title"])
+    rank_str = f"Rank #{circle.monthly_rank}" if circle.monthly_rank else ""
+    monthly_quota = config.monthly_quota
+    quota_per_day = round(monthly_quota / monthrange(today.year, today.month)[1])
+    quota_str = f"Quota {fmt_int(monthly_quota)}/month  ({_short_amount(quota_per_day)}/day pace)"
+    sub = (
+        f"{today.strftime('%B %d, %Y')}  ·  {rank_str}  ·  {len(rows)} active members"
+        f"  ·  {quota_str}"
+    )
+    sub_bbox = draw.textbbox((sub_x, 0), sub, font=sub_font)
+    sub_y = logo_bottom - (sub_bbox[3] - sub_bbox[1])
+    draw.text((sub_x, sub_y), sub, font=sub_font, fill=theme["muted"])
+
+    y = title_h + pad_y
+    _draw_header_banner(img, (pad_x, y, width - pad_x, y + header_h), theme)
+    x = pad_x
+    header_text_color = theme["text"]
+    for column in columns:
+        _draw_text_aligned(
+            draw,
+            (x, y, column.width * SCALE, header_h),
+            column.label,
+            header_font,
+            header_text_color,
+            column.align,
+        )
+        x += column.width * SCALE
+
+    y += header_h
+    for i in range(DISPLAY_ROWS):
+        r = shown_rows[i] if i < len(shown_rows) else None
+        bg = theme["panel"] if i % 2 == 0 else theme["row_alt"]
+        draw.rectangle((pad_x, y, width - pad_x, y + row_h), fill=bg)
+        x = pad_x
+
+        cells = {}
+        if r is not None:
+            cells = {
+                "trainer": (r.trainer_name, "left", theme["text"]),
+                "expected": (fmt_int(r.expected_so_far), "right", theme["subtle"]),
+                "total": (fmt_int(r.total), "right", theme["text"]),
+                "daily_avg": (fmt_int(r.daily_avg), "right", theme["text"]),
+                "behind": (
+                    fmt_blank_if_zero(r.off_by),
+                    "right",
+                    _row_color(r.off_by, quota_per_day, theme),
+                ),
+                "needed_per_day": (
+                    fmt_blank_if_zero(r.needed_per_day) if not r.on_target else "",
+                    "right",
+                    _row_color(r.off_by, quota_per_day, theme),
+                ),
+                "low_days": (
+                    str(r.low_days) if r.low_days else "0",
+                    "right",
+                    _low_days_color(r.low_days, r.days_elapsed, theme),
+                ),
+                "latest_day": (fmt_int(r.latest_day_delta), "right", theme["text"]),
+            }
+
+        for column in columns:
+            wpx = column.width * SCALE
+            if column.key == "rank":
+                prev_rank = previous_ranks.get(r.viewer_id) if r is not None else None
+                movement = None if r is None or prev_rank is None else prev_rank - (i + 1)
+                show_leader = bool(r and config.highlight_leader and r.staff_role == "leader")
+                _draw_rank(draw, (x, y, wpx, row_h), i + 1, movement, rank_font, theme)
+            elif r is None:
+                pass
+            elif column.key == "trainer":
+                show_leader = bool(config.highlight_leader and r.staff_role == "leader")
+                _draw_trainer(
+                    draw,
+                    (x, y, wpx, row_h),
+                    r.trainer_name,
+                    show_leader,
+                    cell_font,
+                    leader_tag_font,
+                    theme,
+                )
+            elif column.key == "progress":
+                _draw_progress(
+                    draw,
+                    (x, y, wpx, row_h),
+                    r.total,
+                    monthly_quota,
+                    r.on_target,
+                    cell_font,
+                    theme,
+                )
+            elif column.key == "on_pace":
+                pill_w, pill_h = 80 * SCALE, 26 * SCALE
+                px = x + (wpx - pill_w) // 2
+                py = y + (row_h - pill_h) // 2
+                tier_bg = theme["pill_tiers"][r.pill_tier]
+                tier_label = theme["pill_label"][r.pill_tier]
+                _pill(draw, img, (px, py), pill_w, pill_h, tier_label, pill_font, tier_bg, theme["pill_fg"])
+            else:
+                text, cell_align, color = cells[column.key]
+                _draw_text_aligned(
+                    draw,
+                    (x, y, wpx, row_h),
+                    text or "",
+                    cell_font,
+                    color or theme["text"],
+                    cell_align,
+                )
+            x += wpx
+        y += row_h
+
+    img.save(out_path)
