@@ -261,7 +261,7 @@ Every setting can be overridden from the command line:
 - `Expected`: expected progress by the cutoff day in `numbers` mode.
 - `Total Fans`: monthly fans gained so far in `numbers` mode.
 - `Monthly Progress`: progress bar in `bar` mode, using the configured on-pace, finished, or off-pace color.
-- `Quota`: current monthly gain versus quota in `bar` mode.
+- `Quota`: current monthly gain versus that member's effective quota in `bar` mode.
 - `Daily Avg`: average fans per day.
 - `On Pace?`: `Done`, `Yes`, or `No`.
 - `Behind By`: how far behind expected pace the member is.

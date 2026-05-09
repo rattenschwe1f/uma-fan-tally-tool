@@ -261,6 +261,7 @@ def test_build_report_strict_mode_expects_full_month_for_mid_month_joiner():
         low_day_threshold=500_000, joiner_quota="strict",
     )
     assert r.expected_so_far == 2_000_000 * 2  # strict treats them as if from day 1
+    assert r.quota_total == 2_000_000 * 31
     assert r.off_by == 2_000_000  # 4M expected - 2M total
 
 
@@ -272,6 +273,7 @@ def test_build_report_prorated_mode_scales_to_days_in_club():
         low_day_threshold=500_000, joiner_quota="prorated",
     )
     assert r.expected_so_far == 2_000_000  # one day in club
+    assert r.quota_total == 2_000_000 * 30  # joined on day 2 of a 31-day month
     assert r.off_by == 0  # gained 2M in 1 day, hits prorated quota exactly
     assert r.daily_avg == 2_000_000  # rate over their 1 day in club
     assert r.on_target is True

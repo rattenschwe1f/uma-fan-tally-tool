@@ -427,7 +427,7 @@ def render(
                     _low_days_color(r.low_days, r.days_elapsed, theme),
                 ),
                 "latest_day": (fmt_int(r.latest_day_delta), "right", theme["text"]),
-                "quota": (_quota_label(r.total, monthly_quota), "right", theme["text"]),
+                "quota": (_quota_label(r.total, r.quota_total), "right", theme["text"]),
             }
 
         for column in columns:
@@ -455,7 +455,7 @@ def render(
                     draw,
                     (x, y, wpx, row_h),
                     r.total,
-                    monthly_quota,
+                    r.quota_total,
                     r.on_target,
                     cell_font,
                     theme,
@@ -466,7 +466,7 @@ def render(
                 px = x + (wpx - pill_w) // 2
                 py = y + (row_h - pill_h) // 2
                 tier_label = theme["pill_label"][r.pill_tier]
-                tier_color = _status_color(r.total, monthly_quota, r.on_target, config)
+                tier_color = _status_color(r.total, r.quota_total, r.on_target, config)
                 _pill(draw, img, (px, py), pill_w, pill_h, tier_label, pill_font, tier_color, theme["pill_fg"])
             else:
                 text, cell_align, color = cells[column.key]

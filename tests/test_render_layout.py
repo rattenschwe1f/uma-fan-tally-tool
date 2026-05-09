@@ -46,6 +46,7 @@ def _report(name: str, total: int, staff_role: str | None = None) -> MemberRepor
         previous_total=total,
         daily_avg=total,
         expected_so_far=0,
+        quota_total=60_000_000,
         on_target=True,
         off_by=0,
         needed_per_day=0,

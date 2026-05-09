@@ -30,6 +30,7 @@ class MemberReport:
     previous_total: int
     daily_avg: float
     expected_so_far: int
+    quota_total: int
     on_target: bool
     off_by: int
     needed_per_day: float
@@ -136,6 +137,7 @@ def build_report(
     total = sum(deltas)
     previous_total = sum(deltas[:-1])
     daily_avg = total / days_elapsed if days_elapsed else 0.0
+    default_expected_total = quota_per_day * days_in_month
     if days_elapsed == 0:
         return MemberReport(
             viewer_id=member.viewer_id,
@@ -145,6 +147,7 @@ def build_report(
             previous_total=0,
             daily_avg=0.0,
             expected_so_far=0,
+            quota_total=default_expected_total,
             on_target=False,
             off_by=0,
             needed_per_day=float(quota_per_day),
@@ -180,6 +183,7 @@ def build_report(
         previous_total=previous_total,
         daily_avg=daily_avg,
         expected_so_far=expected_so_far,
+        quota_total=expected_total,
         on_target=on_target,
         off_by=off_by,
         needed_per_day=max(0.0, needed_per_day),
