@@ -256,7 +256,7 @@ Every setting can be overridden from the command line:
 
 ## Report Columns
 
-- `#`: current rank by monthly fans gained, plus movement from yesterday.
+- `#`: current rank by percent of effective quota complete, plus movement from yesterday.
 - `Trainer`: member name from uma.moe.
 - `Expected`: expected progress by the cutoff day in `numbers` mode.
 - `Total Fans`: monthly fans gained so far in `numbers` mode.

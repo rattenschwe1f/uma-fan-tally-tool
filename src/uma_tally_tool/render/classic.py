@@ -201,18 +201,25 @@ def _quota_label(total: int, quota: int) -> str:
     return f"{millions(total)}/{millions(quota)}M"
 
 
-def _status_color(total: int, quota: int, on_target: bool, config: Config) -> tuple[int, int, int]:
-    if quota > 0 and total >= quota:
+def _quota_ratio(row: MemberReport) -> float:
+    if row.quota_total <= 0:
+        return 0.0
+    return row.total / row.quota_total
+
+
+def _status_color(total: int, quota: int, progress_ratio: float, expected_ratio: float, config: Config) -> tuple[int, int, int]:
+    if quota > 0 and progress_ratio >= 1:
         return config.finished_color
-    return config.on_pace_color if on_target else config.off_pace_color
+    return config.on_pace_color if progress_ratio >= expected_ratio else config.off_pace_color
 
 
-def _draw_progress(draw, cell_xywh, total: int, quota: int, on_target: bool, font, theme, config: Config):
+def _draw_progress(draw, cell_xywh, row: MemberReport, expected_ratio: float, font, theme, config: Config):
     x, y, w, h = cell_xywh
     pad = 14 * SCALE
     gap = 12 * SCALE
     bar_h = 18 * SCALE
-    label = _progress_label(total, quota)
+    progress_ratio = _quota_ratio(row)
+    label = f"{round(progress_ratio * 100)}%"
     label_bbox = draw.textbbox((0, 0), label, font=font)
     label_w = label_bbox[2] - label_bbox[0]
     label_h = label_bbox[3] - label_bbox[1]
@@ -223,14 +230,14 @@ def _draw_progress(draw, cell_xywh, total: int, quota: int, on_target: bool, fon
     bar_w = max(80 * SCALE, w - pad * 2 - gap - label_w)
     bar_w = min(bar_w, max(0, label_x - gap - bar_x))
     radius = bar_h // 2
-    pct = 0.0 if quota <= 0 else max(0.0, min(1.0, total / quota))
+    pct = max(0.0, min(1.0, progress_ratio))
     fill_w = int(round(bar_w * pct))
 
     track = _lerp(theme["panel"], theme["subtle"], 0.25)
     outline = _lerp(theme["subtle"], theme["text"], 0.35)
     draw.rounded_rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=radius, fill=track, outline=outline)
     if fill_w > 0:
-        fill = _status_color(total, quota, on_target, config)
+        fill = _status_color(row.total, row.quota_total, progress_ratio, expected_ratio, config)
         draw.rounded_rectangle((bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=radius, fill=fill)
 
     label_y = y + h / 2 + label_h / 2
@@ -238,7 +245,7 @@ def _draw_progress(draw, cell_xywh, total: int, quota: int, on_target: bool, fon
 
 
 def _previous_ranks(rows: list[MemberReport]) -> dict[int, int]:
-    ranked = sorted(rows, key=lambda r: (-r.previous_total, r.trainer_name.lower(), r.viewer_id))
+    ranked = sorted(rows, key=lambda r: (-_previous_quota_ratio(r), r.trainer_name.lower(), r.viewer_id))
     return {r.viewer_id: i + 1 for i, r in enumerate(ranked)}
 
 
@@ -253,8 +260,18 @@ def _leader_sort_group(row: MemberReport, pin_leader: bool) -> int:
 def _sort_rows(rows: list[MemberReport], config: Config) -> list[MemberReport]:
     return sorted(
         rows,
-        key=lambda r: (_leader_sort_group(r, config.pin_leader), -r.total, r.trainer_name.lower(), r.viewer_id),
+        key=lambda r: (_leader_sort_group(r, config.pin_leader), -_quota_ratio(r), r.trainer_name.lower(), r.viewer_id),
     )
+
+
+def _previous_quota_ratio(row: MemberReport) -> float:
+    if row.quota_total <= 0:
+        return 0.0
+    return row.previous_total / row.quota_total
+
+
+def _podium_color(rank: int, theme: dict) -> tuple[int, int, int] | None:
+    return theme["podium"].get(rank)
 
 
 def _draw_rank(draw, cell_xywh, rank: int, movement: int | None, font, theme):
@@ -262,7 +279,11 @@ def _draw_rank(draw, cell_xywh, rank: int, movement: int | None, font, theme):
     pad = 14 * SCALE
     descent = font.getmetrics()[1]
     cy = y + h / 2 - descent / 2
-    if movement is None:
+    podium = _podium_color(rank, theme)
+    if podium:
+        text = f"#{rank}"
+        fill = podium
+    elif movement is None:
         text = str(rank)
         fill = theme["subtle"]
     elif movement > 0:
@@ -277,13 +298,13 @@ def _draw_rank(draw, cell_xywh, rank: int, movement: int | None, font, theme):
     draw.text((x + pad, cy), text, font=font, fill=fill, anchor="lm")
 
 
-def _draw_trainer(draw, cell_xywh, name: str, leader: bool, font, tag_font, theme):
+def _draw_trainer(draw, cell_xywh, name: str, leader: bool, rank: int, font, tag_font, theme):
     x, y, w, h = cell_xywh
     pad = 14 * SCALE
     descent = font.getmetrics()[1]
     cy = y + h / 2 - descent / 2
     name_x = x + pad
-    draw.text((name_x, cy), name, font=font, fill=theme["text"], anchor="lm")
+    draw.text((name_x, cy), name, font=font, fill=_podium_color(rank, theme) or theme["text"], anchor="lm")
     if not leader:
         return
     bbox = draw.textbbox((name_x, cy), name, font=font, anchor="lm")
@@ -372,7 +393,9 @@ def render(
     draw.text((name_x, name_y), circle.name, font=title_font, fill=theme["title"])
     rank_str = f"Rank #{circle.monthly_rank}" if circle.monthly_rank else ""
     monthly_quota = config.monthly_quota
-    quota_per_day = round(monthly_quota / monthrange(today.year, today.month)[1])
+    days_in_month = monthrange(today.year, today.month)[1]
+    quota_per_day = round(monthly_quota / days_in_month)
+    report_expected_ratio = 0 if days_in_month <= 0 else min(1.0, max(0.0, latest_day / days_in_month))
     quota_str = f"Quota {fmt_int(monthly_quota)}/month  ({_short_amount(quota_per_day)}/day pace)"
     sub = (
         f"{today.strftime('%B %d, %Y')}  ·  {rank_str}  ·  {len(rows)} active members"
@@ -446,6 +469,7 @@ def render(
                     (x, y, wpx, row_h),
                     r.trainer_name,
                     show_leader,
+                    i + 1,
                     cell_font,
                     leader_tag_font,
                     theme,
@@ -454,9 +478,8 @@ def render(
                 _draw_progress(
                     draw,
                     (x, y, wpx, row_h),
-                    r.total,
-                    r.quota_total,
-                    r.on_target,
+                    r,
+                    report_expected_ratio,
                     cell_font,
                     theme,
                     config,
@@ -466,7 +489,7 @@ def render(
                 px = x + (wpx - pill_w) // 2
                 py = y + (row_h - pill_h) // 2
                 tier_label = theme["pill_label"][r.pill_tier]
-                tier_color = _status_color(r.total, r.quota_total, r.on_target, config)
+                tier_color = _status_color(r.total, r.quota_total, _quota_ratio(r), report_expected_ratio, config)
                 _pill(draw, img, (px, py), pill_w, pill_h, tier_label, pill_font, tier_color, theme["pill_fg"])
             else:
                 text, cell_align, color = cells[column.key]
