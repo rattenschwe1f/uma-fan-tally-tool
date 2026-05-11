@@ -24,7 +24,6 @@ def env_config(tmp_path: Path) -> Path:
         "CIRCLE_ID=333\n"
         "MONTHLY_QUOTA=60000000\n"
         "LOW_DAY_THRESHOLD=250000\n"
-        "FONT=mplus\n"
         "JOINER_QUOTA=prorated\n"
         "TALLY=live\n"
         "EXPECTED_FANS_STYLE=bar\n"
@@ -52,7 +51,6 @@ def test_loads_defaults_from_env(env_config: Path):
     assert cfg.circle_id == 333
     assert cfg.monthly_quota == 60_000_000
     assert cfg.low_day_threshold == 250_000
-    assert cfg.font == "mplus"
     assert cfg.joiner_quota == "prorated"
     assert cfg.tally == "live"
     assert cfg.expected_fans_style == "bar"

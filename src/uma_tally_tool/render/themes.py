@@ -32,5 +32,5 @@ THEME = {
         (240, 188, 60),
         (224, 102, 102),
     ],
-    "use_game_font": True,
+    "use_display_font": True,
 }

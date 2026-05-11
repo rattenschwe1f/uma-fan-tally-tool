@@ -321,15 +321,15 @@ def render(
     rank_icon: Path | None = None,
 ) -> None:
     theme = THEME
-    use_game_font = theme["use_game_font"]
+    use_display_font = theme["use_display_font"]
 
-    title_font = load_font(40 * SCALE, bold=True, game=use_game_font)
-    sub_font = load_font(15 * SCALE, game=use_game_font)
-    header_font = load_font(14 * SCALE, bold=True, game=use_game_font)
-    cell_font = load_font(15 * SCALE, game=use_game_font)
+    title_font = load_font(40 * SCALE, bold=True, game=use_display_font)
+    sub_font = load_font(15 * SCALE, game=use_display_font)
+    header_font = load_font(14 * SCALE, bold=True, game=use_display_font)
+    cell_font = load_font(15 * SCALE, game=use_display_font)
     rank_font = load_font(14 * SCALE, bold=True)
     leader_tag_font = load_font(10 * SCALE, bold=True)
-    pill_font = load_font(13 * SCALE, bold=True, game=use_game_font)
+    pill_font = load_font(13 * SCALE, bold=True, game=use_display_font)
 
     rows = _sort_rows(reports, config)
     shown_rows = rows[:DISPLAY_ROWS]

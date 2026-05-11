@@ -12,7 +12,6 @@ from .config import Config
 from .icons import resolve_club_logo, resolve_rank_icon
 from .model import CircleResponse, Member, circle_leader_name
 from .render import render
-from .render.base import set_font_family
 
 
 def require_api_key(config: Config) -> None:
@@ -141,7 +140,6 @@ def run_once(config: Config, now: datetime | None = None) -> int:
         return 0
 
     reports = build_member_reports(response, config, today)
-    set_font_family(config.font)
     config = with_resolved_logo(config)
     render_and_deliver(response, reports, today, config, rank_icon_for(response))
     return 0

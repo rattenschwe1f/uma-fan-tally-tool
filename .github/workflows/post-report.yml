@@ -13,7 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CIRCLE_ID: ${{ vars.CIRCLE_ID || secrets.CIRCLE_ID }}
-      FONT: ${{ vars.FONT || 'uma' }}
       MONTHLY_QUOTA: ${{ vars.MONTHLY_QUOTA || '60000000' }}
       LOW_DAY_THRESHOLD: ${{ vars.LOW_DAY_THRESHOLD || '500000' }}
       JOINER_QUOTA: ${{ vars.JOINER_QUOTA || 'strict' }}

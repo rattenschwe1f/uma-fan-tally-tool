@@ -64,7 +64,6 @@ class Config:
     monthly_quota: int = 60_000_000
     low_day_threshold: int = 500_000
     output_dir: Path = field(default_factory=lambda: Path("out"))
-    font: str = "uma"
     joiner_quota: str = "strict"
     tally: str = "complete"
     expected_fans_style: str = "numbers"
@@ -108,7 +107,6 @@ class Config:
             monthly_quota=int(data.get("monthly_quota", 60_000_000)),
             low_day_threshold=int(data.get("low_day_threshold", 500_000)),
             output_dir=Path(data.get("output_dir", "out")),
-            font=str(data.get("font", "uma")),
             joiner_quota=str(data.get("joiner_quota", "strict")),
             tally=str(data.get("tally", "complete")),
             expected_fans_style=str(data.get("expected_fans_style", "numbers")),
@@ -138,7 +136,6 @@ _ENV_KEYS = {
     "MONTHLY_QUOTA": "monthly_quota",
     "LOW_DAY_THRESHOLD": "low_day_threshold",
     "OUTPUT_DIR": "output_dir",
-    "FONT": "font",
     "JOINER_QUOTA": "joiner_quota",
     "TALLY": "tally",
     "EXPECTED_FANS_STYLE": "expected_fans_style",

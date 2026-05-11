@@ -54,7 +54,6 @@ Variables here become defaults that every club can share.
 | --- | --- | --- | --- |
 | `CIRCLE_ID` | one club only | `123456789` | Numeric uma.moe circle id. |
 | `MONTHLY_QUOTA` | no | `60000000` | Monthly fan target per member. |
-| `FONT` | no | `uma` | `uma` or `mplus`. |
 | `LOW_DAY_THRESHOLD` | no | `500000` | Daily gain below this counts in `Days < N`. |
 | `JOINER_QUOTA` | no | `strict` | `strict` or `prorated` for mid-month joiners. |
 | `TALLY` | no | `complete` | `complete` ignores the in-progress game day; `live` includes it. |
@@ -76,13 +75,14 @@ Variables here become defaults that every club can share.
 
 Boolean settings accept `true/false`, `yes/no`, `on/off`, or `show/hide`.
 Color settings accept `#RRGGBB`, `RRGGBB`, or comma-separated RGB.
+For a custom club icon, upload any PNG into the `icons` folder and point
+`CLUB_LOGO` or a club's `club_logo` value at that file.
 
 Copy variable names:
 
 ```text
 CIRCLE_ID
 MONTHLY_QUOTA
-FONT
 LOW_DAY_THRESHOLD
 JOINER_QUOTA
 TALLY
@@ -167,7 +167,6 @@ circle_id
 discord_webhook
 monthly_quota
 low_day_threshold
-font
 joiner_quota
 tally
 expected_fans_style
@@ -234,7 +233,6 @@ Every setting can be overridden from the command line:
 | `--circle-id N` | `CIRCLE_ID` |
 | `--monthly-quota N` | `MONTHLY_QUOTA` |
 | `--threshold N` | `LOW_DAY_THRESHOLD` |
-| `--font {uma,mplus}` | `FONT` |
 | `--joiner-quota {strict,prorated}` | `JOINER_QUOTA` |
 | `--tally {live,complete}` | `TALLY` |
 | `--expected-fans-style {numbers,bar}` | `EXPECTED_FANS_STYLE` |

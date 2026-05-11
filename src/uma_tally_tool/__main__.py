@@ -15,7 +15,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--circle-id", type=int, help="Override config circle_id")
     p.add_argument("--monthly-quota", type=int, help="Override monthly quota")
     p.add_argument("--threshold", type=int, dest="low_day_threshold", help="Override low-day threshold")
-    p.add_argument("--font", choices=("uma", "mplus"), help="Override game font family")
     p.add_argument(
         "--joiner-quota",
         choices=("strict", "prorated"),
@@ -77,7 +76,7 @@ def _load_config(args: argparse.Namespace) -> Config:
         cfg = Config(circle_id=args.circle_id)
 
     for field_name in (
-        "circle_id", "monthly_quota", "low_day_threshold", "font", "joiner_quota", "tally",
+        "circle_id", "monthly_quota", "low_day_threshold", "joiner_quota", "tally",
         "expected_fans_style", "show_daily_avg", "show_on_pace", "show_needed_per_day",
         "show_days_below_threshold", "show_latest_day", "pin_leader", "highlight_leader", "save_output",
         "on_pace_color", "finished_color", "off_pace_color", "output_dir", "club_logo",
