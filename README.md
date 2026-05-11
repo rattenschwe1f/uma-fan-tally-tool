@@ -6,13 +6,13 @@ renders a ranked 30-row report, and posts it to Discord through a webhook.
 
 ## Examples
 
-Dark mode, numbers layout:
+Numbers layout:
 
-![Dark mode numbers report](<docs/sample dark number.png>)
+![Numbers report](docs/numbers.png)
 
-Dark mode, progress bars:
+Progress bars:
 
-![Dark mode bar report](<docs/sample dark bar.png>)
+![Bars report](docs/bars.png)
 
 ## Features
 
