@@ -75,8 +75,9 @@ Variables here become defaults that every club can share.
 
 Boolean settings accept `true/false`, `yes/no`, `on/off`, or `show/hide`.
 Color settings accept `#RRGGBB`, `RRGGBB`, or comma-separated RGB.
-For a custom club icon, upload any PNG into the `icons` folder and point
-`CLUB_LOGO` or a club's `club_logo` value at that file.
+For a custom club icon, upload any PNG into the base `icons` folder, or a
+subfolder inside it, then point `CLUB_LOGO` or a club's `club_logo` value at
+that file. The included `icons/Gold_City` folder is only a sample.
 
 Copy variable names:
 
